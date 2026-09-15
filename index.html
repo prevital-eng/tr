@@ -9,10 +9,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; }
-body { font-family: 'Assistant', sans-serif; background: #F0FAF5; -webkit-tap-highlight-color: transparent; margin: 0; }
+body { font-family: 'Heebo', sans-serif; background: #bfdbee; -webkit-tap-highlight-color: transparent; margin: 0; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .step-fade { animation: fadeIn 0.2s ease; }
@@ -65,17 +65,16 @@ function fileToBase64(file) {
 // ════════ מסך כניסה למורשים ════════
 function LoginModal({ onClose, onLoggedIn }) {
   const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
 
   const submit = () => {
-    if (!email.trim() || !name.trim()) { setErr('נא למלא מייל ושם'); return; }
+    if (!email.trim()) { setErr('נא למלא כתובת מייל'); return; }
     setLoading(true); setErr('');
     api('getRole', { email: email.trim() }).then(res => {
       setLoading(false);
       if (res.role === 'מעלה' || res.role === 'מאשר') {
-        const session = { email: email.trim(), name: name.trim(), role: res.role };
+        const session = { email: email.trim(), role: res.role };
         localStorage.setItem('tips_session', JSON.stringify(session));
         onLoggedIn(session);
       } else {
@@ -88,15 +87,13 @@ function LoginModal({ onClose, onLoggedIn }) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-6">
       <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-xs w-full">
         <h3 className="font-extrabold text-lg text-gray-800 mb-4 text-center">כניסת מורשים</h3>
-        <input placeholder="שם מלא" value={name} onChange={e=>setName(e.target.value)}
-          className="w-full mb-3 p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500" />
         <input placeholder="כתובת מייל" value={email} onChange={e=>setEmail(e.target.value)}
-          className="w-full mb-3 p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500" />
+          className="w-full mb-3 p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600" />
         {err && <p className="text-red-500 text-sm mb-3 text-center">{err}</p>}
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl font-bold border border-b-gray-400 border-gray-300 text-gray-600 btn-3d">ביטול</button>
           <button onClick={submit} disabled={loading}
-            className="flex-1 py-2.5 rounded-xl font-bold text-white border border-b-teal-800 border-teal-500 btn-3d" style={{background:"#0d9488"}}>
+            className="flex-1 py-2.5 rounded-xl font-bold text-white border border-b-blue-900 border-sky-600 btn-3d" style={{background:"#0284c7"}}>
             {loading ? '...בודק' : 'כניסה'}
           </button>
         </div>
@@ -107,6 +104,7 @@ function LoginModal({ onClose, onLoggedIn }) {
 
 // ════════ טופס הוספת טיפ ════════
 function SubmitTipForm({ session, onDone }) {
+  const [submitterName, setSubmitterName] = useState(() => localStorage.getItem('tips_submitter_name') || '');
   const [name, setName] = useState('');
   const [essence, setEssence] = useState('');
   const [category, setCategory] = useState(CATS[0].key);
@@ -123,14 +121,15 @@ function SubmitTipForm({ session, onDone }) {
   const removeStep = i => setSteps(steps.filter((_,idx)=>idx!==i));
 
   const submit = async () => {
-    if (!name.trim() || !essence.trim() || steps.filter(s=>s.trim()).length===0) {
-      setMsg('נא למלא לפחות שם, מהות ושלב אחד'); return;
+    if (!submitterName.trim() || !name.trim() || !essence.trim() || steps.filter(s=>s.trim()).length===0) {
+      setMsg('נא למלא לפחות שם מציע, שם טיפ, מהות ושלב אחד'); return;
     }
     setSaving(true); setMsg('');
+    localStorage.setItem('tips_submitter_name', submitterName.trim());
     let infographicBase64 = null, infographicName = '';
     if (file) { infographicBase64 = await fileToBase64(file); infographicName = file.name; }
     api('submit', {}, 'POST', {
-      email: session.email, submitterName: session.name,
+      email: session.email, submitterName: submitterName.trim(),
       name: name.trim(), essence: essence.trim(), category, platform, difficulty,
       steps: steps.filter(s=>s.trim()), uses: uses.trim(),
       infographicBase64, infographicName
@@ -144,18 +143,20 @@ function SubmitTipForm({ session, onDone }) {
   return (
     <div className="p-4 space-y-3">
       <h3 className="font-extrabold text-lg text-gray-800">הוספת טיפ חדש</h3>
+      <input placeholder="שם המציע/ה" value={submitterName} onChange={e=>setSubmitterName(e.target.value)}
+        className="w-full p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600 font-semibold" />
       <input placeholder="שם הטיפ" value={name} onChange={e=>setName(e.target.value)}
-        className="w-full p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500 font-semibold" />
+        className="w-full p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600 font-semibold" />
       <textarea placeholder="מהות - תיאור קצר של הטיפ" value={essence} onChange={e=>setEssence(e.target.value)}
-        rows={2} className="w-full p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500" />
+        rows={2} className="w-full p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600" />
       <div className="grid grid-cols-3 gap-2">
-        <select value={category} onChange={e=>setCategory(e.target.value)} className="p-3 rounded-xl border-2 border-teal-200 text-sm">
+        <select value={category} onChange={e=>setCategory(e.target.value)} className="p-3 rounded-xl border-2 border-sky-300 text-sm">
           {CATS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
-        <select value={platform} onChange={e=>setPlatform(e.target.value)} className="p-3 rounded-xl border-2 border-teal-200 text-sm">
+        <select value={platform} onChange={e=>setPlatform(e.target.value)} className="p-3 rounded-xl border-2 border-sky-300 text-sm">
           {PLATFORMS.map(p=><option key={p.key} value={p.key}>{p.label}</option>)}
         </select>
-        <select value={difficulty} onChange={e=>setDifficulty(e.target.value)} className="p-3 rounded-xl border-2 border-teal-200 text-sm">
+        <select value={difficulty} onChange={e=>setDifficulty(e.target.value)} className="p-3 rounded-xl border-2 border-sky-300 text-sm">
           {DIFFICULTIES.map(d=><option key={d.key} value={d.key}>{d.label}</option>)}
         </select>
       </div>
@@ -164,24 +165,23 @@ function SubmitTipForm({ session, onDone }) {
         {steps.map((s,i)=>(
           <div key={i} className="flex gap-2 mb-2">
             <input value={s} onChange={e=>updateStep(i,e.target.value)} placeholder={"שלב " + (i+1)}
-              className="flex-1 p-2.5 rounded-xl border-2 border-gray-200 focus:outline-none focus:border-teal-500" />
+              className="flex-1 p-2.5 rounded-xl border-2 border-gray-200 focus:outline-none focus:border-sky-600" />
             {steps.length>1 && <button onClick={()=>removeStep(i)} className="px-3 rounded-xl bg-red-50 text-red-500 font-bold btn-3d border border-b-red-300 border-red-200">✕</button>}
           </div>
         ))}
-        <button onClick={addStep} className="text-teal-600 font-bold text-sm">+ הוספת שלב</button>
+        <button onClick={addStep} className="text-sky-600 font-bold text-sm">+ הוספת שלב</button>
       </div>
       <textarea placeholder="שימושים אפשריים (חופשי)" value={uses} onChange={e=>setUses(e.target.value)}
-        rows={2} className="w-full p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500" />
+        rows={2} className="w-full p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600" />
       <div>
         <p className="font-bold text-sm text-gray-600 mb-1">אינפוגרפיקה (PDF, קובץ קליל - לא חובה)</p>
         <input type="file" accept="application/pdf" onChange={e=>setFile(e.target.files[0])} className="text-sm" />
       </div>
-      {msg && <p className="text-sm font-bold text-center text-teal-700">{msg}</p>}
+      {msg && <p className="text-sm font-bold text-center text-sky-700">{msg}</p>}
       <button onClick={submit} disabled={saving}
-        className="w-full py-3 rounded-xl font-extrabold text-white border border-b-teal-800 border-teal-500 btn-3d" style={{background:"#0d9488"}}>
+        className="w-full py-3 rounded-xl font-extrabold text-white border border-b-blue-900 border-sky-600 btn-3d" style={{background:"#0284c7"}}>
         {saving ? 'שולח...' : 'שליחה לאישור'}
       </button>
-      <p className="text-xs text-gray-400 text-center">מגיש/ה: {session.name}</p>
     </div>
   );
 }
@@ -195,7 +195,7 @@ function ApprovalQueue({ session }) {
   useEffect(() => { load(); }, []);
 
   const decide = (id, decision) => {
-    api('decide', {}, 'POST', { email: session.email, approverName: session.name, id, decision, note: notes[id]||'' })
+    api('decide', {}, 'POST', { email: session.email, approverName: session.email, id, decision, note: notes[id]||'' })
       .then(() => load());
   };
 
@@ -254,20 +254,20 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="text-white p-4 sticky top-0 z-20" style={{background:"linear-gradient(135deg,#0d9488,#0f766e)"}}>
+      <header className="text-white p-4 sticky top-0 z-20" style={{background:"linear-gradient(160deg,#0c2461 0%,#1a4d8a 50%,#0284c7 100%)"}}>
         <div className="flex items-center justify-between mb-1">
           <span className="font-extrabold text-xl tracking-tight">💡 מאגר טיפים</span>
           {session ? (
-            <button onClick={logout} className="text-xs bg-white/20 px-3 py-1.5 rounded-xl btn-3d-header">{session.name} ({session.role}) · יציאה</button>
+            <button onClick={logout} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">{session.email} ({session.role}) · יציאה</button>
           ) : (
-            <button onClick={()=>setShowLogin(true)} className="text-xs bg-white/20 px-3 py-1.5 rounded-xl btn-3d-header">כניסת מורשים</button>
+            <button onClick={()=>setShowLogin(true)} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">כניסת מורשים</button>
           )}
         </div>
         {session && (
           <div className="flex gap-2 mt-2">
-            <button onClick={()=>setTab('browse')} className={`px-3 py-1.5 rounded-xl text-sm font-bold ${tab==='browse'?'bg-white text-teal-700':'bg-white/20'}`}>עיון</button>
-            <button onClick={()=>setTab('submit')} className={`px-3 py-1.5 rounded-xl text-sm font-bold ${tab==='submit'?'bg-white text-teal-700':'bg-white/20'}`}>הוספת טיפ</button>
-            {session.role==='מאשר' && <button onClick={()=>setTab('approve')} className={`px-3 py-1.5 rounded-xl text-sm font-bold ${tab==='approve'?'bg-white text-teal-700':'bg-white/20'}`}>אישורים</button>}
+            <button onClick={()=>setTab('browse')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='browse'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>עיון</button>
+            <button onClick={()=>setTab('submit')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='submit'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>הוספת טיפ</button>
+            {session.role==='מאשר' && <button onClick={()=>setTab('approve')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='approve'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>אישורים</button>}
           </div>
         )}
       </header>
@@ -282,14 +282,14 @@ function App() {
           <div className="px-4 pt-4">
             <input type="text" placeholder="חפשו טיפ..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
               className="w-full bg-white text-gray-800 px-4 py-4 rounded-2xl text-base font-semibold placeholder-gray-400 focus:outline-none"
-              style={{border:"2.5px solid #2db8a0", boxShadow:"0 3px 0px #0d6e5f"}} />
+              style={{border:"2.5px solid #0284c7", boxShadow:"0 3px 0px #065a8c"}} />
           </div>
           {!searchQuery && (
             <div className="px-4 pt-4">
-              <div className="grid grid-cols-4 gap-2">
+              <div className="flex flex-wrap gap-2 justify-center">
                 {CATS.map(c => (
                   <button key={c.key} onClick={()=>setSelectedCat(selectedCat===c.key?null:c.key)}
-                    className={`p-2 rounded-2xl text-xs font-bold h-14 btn-3d border ${selectedCat===c.key?'bg-teal-600 text-white border-b-teal-800 border-teal-700':'bg-white text-gray-700 border-b-gray-300 border-gray-200'}`}>
+                    className={`px-3 py-2 rounded-full text-xs font-bold btn-3d border-2 ${selectedCat===c.key?'bg-sky-600 text-white border-sky-600':'bg-sky-50 text-blue-900 border-sky-600'}`}>
                     {c.label}
                   </button>
                 ))}
@@ -300,7 +300,7 @@ function App() {
             {filtered.map(t => {
               const isOpen = expanded === t.id;
               return (
-                <div key={t.id} className={`bg-white rounded-2xl border overflow-hidden shadow-sm ${isOpen?'border-teal-400 ring-2 ring-teal-100':'border-gray-200/80'}`}>
+                <div key={t.id} className={`bg-white rounded-2xl border overflow-hidden shadow-sm ${isOpen?'border-sky-400 ring-2 ring-sky-100':'border-gray-200/80'}`}>
                   <button onClick={()=>setExpanded(isOpen?null:t.id)} className="w-full text-right p-4">
                     <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md font-semibold">{catLabel(t.category)}</span>
                     <p className="font-extrabold text-gray-800 mt-1">{t.name}</p>
