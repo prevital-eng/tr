@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>מאגר טיפים - GimlaTech</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; }
+body { font-family: 'Assistant', sans-serif; background: #F0FAF5; -webkit-tap-highlight-color: transparent; margin: 0; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.step-fade { animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+.btn-3d { border-bottom-width: 4px !important; transition: transform 0.08s ease, border-bottom-width 0.08s ease; }
+.btn-3d:active { transform: translateY(3px); border-bottom-width: 1px !important; }
+.btn-3d-header { border-bottom: 3px solid rgba(0,0,0,0.25) !important; transition: transform 0.08s ease, border-bottom-width 0.08s ease; }
+.btn-3d-header:active { transform: translateY(2px); border-bottom-width: 0px !important; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="legacy-tips.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+// ════════ הגדרות ════════
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx1tsXkQgxAtxWXv1gCr8nHl320SsQfL4Ry-q8SUKpfa3irQbDo2WPhEaFBRnc3LErF/exec';
+
+const CATS = [
+  { key:"basics", label:"יסודות" }, { key:"whatsapp", label:"וואטסאפ" },
+  { key:"android", label:"אנדרואיד" }, { key:"iphone", label:"אייפון" },
+  { key:"gmail", label:"מייל" }, { key:"camera", label:"צילום" },
+  { key:"nav", label:"ניווט" }, { key:"zoom", label:"זום" },
+  { key:"ai", label:"AI" }, { key:"banking", label:"בנקאות" },
+  { key:"health", label:"בריאות" }, { key:"photos", label:"תמונות" },
+  { key:"other", label:"אחר" },
+];
+const PLATFORMS = [{key:"all",label:"הכל"},{key:"android",label:"אנדרואיד"},{key:"iphone",label:"אייפון"}];
+const DIFFICULTIES = [{key:"קל",label:"קל"},{key:"בינוני",label:"בינוני"},{key:"מתקדם",label:"מתקדם"}];
+const catLabel = k => (CATS.find(c=>c.key===k)||{}).label || k;
+
+function api(sub, params, method, body) {
+  let url = APPS_SCRIPT_URL + '?action=tips&sub=' + sub;
+  Object.keys(params||{}).forEach(k => { url += '&' + k + '=' + encodeURIComponent(params[k]); });
+  const opts = { method: method || 'GET' };
+  if (body) { opts.method = 'POST'; opts.body = JSON.stringify(body); }
+  return fetch(url, opts).then(r => r.json());
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ════════ מסך כניסה למורשים ════════
+function LoginModal({ onClose, onLoggedIn }) {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = () => {
+    if (!email.trim() || !name.trim()) { setErr('נא למלא מייל ושם'); return; }
+    setLoading(true); setErr('');
+    api('getRole', { email: email.trim() }).then(res => {
+      setLoading(false);
+      if (res.role === 'מעלה' || res.role === 'מאשר') {
+        const session = { email: email.trim(), name: name.trim(), role: res.role };
+        localStorage.setItem('tips_session', JSON.stringify(session));
+        onLoggedIn(session);
+      } else {
+        setErr('כתובת המייל לא מורשית. פני למנהל המערכת להוספה.');
+      }
+    }).catch(() => { setLoading(false); setErr('שגיאת תקשורת, נסי שוב'); });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-6">
+      <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-xs w-full">
+        <h3 className="font-extrabold text-lg text-gray-800 mb-4 text-center">כניסת מורשים</h3>
+        <input placeholder="שם מלא" value={name} onChange={e=>setName(e.target.value)}
+          className="w-full mb-3 p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500" />
+        <input placeholder="כתובת מייל" value={email} onChange={e=>setEmail(e.target.value)}
+          className="w-full mb-3 p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500" />
+        {err && <p className="text-red-500 text-sm mb-3 text-center">{err}</p>}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl font-bold border border-b-gray-400 border-gray-300 text-gray-600 btn-3d">ביטול</button>
+          <button onClick={submit} disabled={loading}
+            className="flex-1 py-2.5 rounded-xl font-bold text-white border border-b-teal-800 border-teal-500 btn-3d" style={{background:"#0d9488"}}>
+            {loading ? '...בודק' : 'כניסה'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════ טופס הוספת טיפ ════════
+function SubmitTipForm({ session, onDone }) {
+  const [name, setName] = useState('');
+  const [essence, setEssence] = useState('');
+  const [category, setCategory] = useState(CATS[0].key);
+  const [platform, setPlatform] = useState('all');
+  const [difficulty, setDifficulty] = useState('קל');
+  const [steps, setSteps] = useState(['']);
+  const [uses, setUses] = useState('');
+  const [file, setFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const updateStep = (i, v) => { const s=[...steps]; s[i]=v; setSteps(s); };
+  const addStep = () => setSteps([...steps, '']);
+  const removeStep = i => setSteps(steps.filter((_,idx)=>idx!==i));
+
+  const submit = async () => {
+    if (!name.trim() || !essence.trim() || steps.filter(s=>s.trim()).length===0) {
+      setMsg('נא למלא לפחות שם, מהות ושלב אחד'); return;
+    }
+    setSaving(true); setMsg('');
+    let infographicBase64 = null, infographicName = '';
+    if (file) { infographicBase64 = await fileToBase64(file); infographicName = file.name; }
+    api('submit', {}, 'POST', {
+      email: session.email, submitterName: session.name,
+      name: name.trim(), essence: essence.trim(), category, platform, difficulty,
+      steps: steps.filter(s=>s.trim()), uses: uses.trim(),
+      infographicBase64, infographicName
+    }).then(res => {
+      setSaving(false);
+      if (res.ok) { setMsg('✓ הטיפ נשלח לאישור, תודה!'); setName(''); setEssence(''); setSteps(['']); setUses(''); setFile(null); if(onDone) onDone(); }
+      else setMsg('שגיאה: ' + (res.error||'')); 
+    }).catch(()=>{ setSaving(false); setMsg('שגיאת תקשורת'); });
+  };
+
+  return (
+    <div className="p-4 space-y-3">
+      <h3 className="font-extrabold text-lg text-gray-800">הוספת טיפ חדש</h3>
+      <input placeholder="שם הטיפ" value={name} onChange={e=>setName(e.target.value)}
+        className="w-full p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500 font-semibold" />
+      <textarea placeholder="מהות - תיאור קצר של הטיפ" value={essence} onChange={e=>setEssence(e.target.value)}
+        rows={2} className="w-full p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500" />
+      <div className="grid grid-cols-3 gap-2">
+        <select value={category} onChange={e=>setCategory(e.target.value)} className="p-3 rounded-xl border-2 border-teal-200 text-sm">
+          {CATS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+        <select value={platform} onChange={e=>setPlatform(e.target.value)} className="p-3 rounded-xl border-2 border-teal-200 text-sm">
+          {PLATFORMS.map(p=><option key={p.key} value={p.key}>{p.label}</option>)}
+        </select>
+        <select value={difficulty} onChange={e=>setDifficulty(e.target.value)} className="p-3 rounded-xl border-2 border-teal-200 text-sm">
+          {DIFFICULTIES.map(d=><option key={d.key} value={d.key}>{d.label}</option>)}
+        </select>
+      </div>
+      <div>
+        <p className="font-bold text-sm text-gray-600 mb-1">שלבי עבודה</p>
+        {steps.map((s,i)=>(
+          <div key={i} className="flex gap-2 mb-2">
+            <input value={s} onChange={e=>updateStep(i,e.target.value)} placeholder={"שלב " + (i+1)}
+              className="flex-1 p-2.5 rounded-xl border-2 border-gray-200 focus:outline-none focus:border-teal-500" />
+            {steps.length>1 && <button onClick={()=>removeStep(i)} className="px-3 rounded-xl bg-red-50 text-red-500 font-bold btn-3d border border-b-red-300 border-red-200">✕</button>}
+          </div>
+        ))}
+        <button onClick={addStep} className="text-teal-600 font-bold text-sm">+ הוספת שלב</button>
+      </div>
+      <textarea placeholder="שימושים אפשריים (חופשי)" value={uses} onChange={e=>setUses(e.target.value)}
+        rows={2} className="w-full p-3 rounded-xl border-2 border-teal-200 focus:outline-none focus:border-teal-500" />
+      <div>
+        <p className="font-bold text-sm text-gray-600 mb-1">אינפוגרפיקה (PDF, קובץ קליל - לא חובה)</p>
+        <input type="file" accept="application/pdf" onChange={e=>setFile(e.target.files[0])} className="text-sm" />
+      </div>
+      {msg && <p className="text-sm font-bold text-center text-teal-700">{msg}</p>}
+      <button onClick={submit} disabled={saving}
+        className="w-full py-3 rounded-xl font-extrabold text-white border border-b-teal-800 border-teal-500 btn-3d" style={{background:"#0d9488"}}>
+        {saving ? 'שולח...' : 'שליחה לאישור'}
+      </button>
+      <p className="text-xs text-gray-400 text-center">מגיש/ה: {session.name}</p>
+    </div>
+  );
+}
+
+// ════════ תור אישורים ════════
+function ApprovalQueue({ session }) {
+  const [pending, setPending] = useState(null);
+  const [notes, setNotes] = useState({});
+
+  const load = () => api('pending', { email: session.email }).then(res => setPending(res.tips || []));
+  useEffect(() => { load(); }, []);
+
+  const decide = (id, decision) => {
+    api('decide', {}, 'POST', { email: session.email, approverName: session.name, id, decision, note: notes[id]||'' })
+      .then(() => load());
+  };
+
+  if (pending === null) return <p className="p-6 text-center text-gray-400">טוען...</p>;
+  if (pending.length === 0) return <p className="p-6 text-center text-gray-400">אין טיפים הממתינים לאישור כרגע 🎉</p>;
+
+  return (
+    <div className="p-4 space-y-3">
+      <h3 className="font-extrabold text-lg text-gray-800">טיפים הממתינים לאישור ({pending.length})</h3>
+      {pending.map(t => (
+        <div key={t.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-2">
+          <p className="font-extrabold text-gray-800">{t.name} <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md">{catLabel(t.category)}</span></p>
+          <p className="text-sm text-gray-600">{t.essence}</p>
+          <ol className="list-decimal pr-5 text-sm text-gray-700 space-y-1">
+            {t.steps.map((s,i)=><li key={i}>{s}</li>)}
+          </ol>
+          {t.uses && <p className="text-sm text-gray-500"><b>שימושים:</b> {t.uses}</p>}
+          <p className="text-xs text-gray-400">מציע/ה: {t.submitter} ({t.email})</p>
+          {t.infographicUrl && <a href={t.infographicUrl} target="_blank" className="text-xs text-blue-600 underline">קובץ אינפוגרפיקה מצורף</a>}
+          <input placeholder="הערה (לא חובה)" value={notes[t.id]||''} onChange={e=>setNotes({...notes,[t.id]:e.target.value})}
+            className="w-full p-2 rounded-lg border border-gray-200 text-sm" />
+          <div className="flex gap-2">
+            <button onClick={()=>decide(t.id,'approve')} className="flex-1 py-2 rounded-xl font-bold text-white btn-3d border border-b-green-800 border-green-600" style={{background:"#16a34a"}}>אשר</button>
+            <button onClick={()=>decide(t.id,'reject')} className="flex-1 py-2 rounded-xl font-bold text-white btn-3d border border-b-red-800 border-red-600" style={{background:"#dc2626"}}>דחה</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ════════ מסך ראשי - עיון וחיפוש ════════
+function App() {
+  const [session, setSession] = useState(() => { try { return JSON.parse(localStorage.getItem('tips_session')); } catch(e){ return null; } });
+  const [showLogin, setShowLogin] = useState(false);
+  const [tab, setTab] = useState('browse');
+  const [approvedRemote, setApprovedRemote] = useState([]);
+  const [selectedCat, setSelectedCat] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => { api('approved', {}).then(res => setApprovedRemote(res.tips || [])).catch(()=>{}); }, [tab]);
+
+  const allTips = useMemo(() => [...(window.legacyTips||[]), ...approvedRemote], [approvedRemote]);
+
+  const fuse = useMemo(() => new Fuse(allTips, { keys: ['name','essence','uses'], threshold: 0.35 }), [allTips]);
+
+  const filtered = useMemo(() => {
+    let list = allTips;
+    if (searchQuery.trim()) list = fuse.search(searchQuery).map(r=>r.item);
+    else if (selectedCat) list = list.filter(t => t.category === selectedCat);
+    return list;
+  }, [allTips, searchQuery, selectedCat, fuse]);
+
+  const logout = () => { localStorage.removeItem('tips_session'); setSession(null); setTab('browse'); };
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="text-white p-4 sticky top-0 z-20" style={{background:"linear-gradient(135deg,#0d9488,#0f766e)"}}>
+        <div className="flex items-center justify-between mb-1">
+          <span className="font-extrabold text-xl tracking-tight">💡 מאגר טיפים</span>
+          {session ? (
+            <button onClick={logout} className="text-xs bg-white/20 px-3 py-1.5 rounded-xl btn-3d-header">{session.name} ({session.role}) · יציאה</button>
+          ) : (
+            <button onClick={()=>setShowLogin(true)} className="text-xs bg-white/20 px-3 py-1.5 rounded-xl btn-3d-header">כניסת מורשים</button>
+          )}
+        </div>
+        {session && (
+          <div className="flex gap-2 mt-2">
+            <button onClick={()=>setTab('browse')} className={`px-3 py-1.5 rounded-xl text-sm font-bold ${tab==='browse'?'bg-white text-teal-700':'bg-white/20'}`}>עיון</button>
+            <button onClick={()=>setTab('submit')} className={`px-3 py-1.5 rounded-xl text-sm font-bold ${tab==='submit'?'bg-white text-teal-700':'bg-white/20'}`}>הוספת טיפ</button>
+            {session.role==='מאשר' && <button onClick={()=>setTab('approve')} className={`px-3 py-1.5 rounded-xl text-sm font-bold ${tab==='approve'?'bg-white text-teal-700':'bg-white/20'}`}>אישורים</button>}
+          </div>
+        )}
+      </header>
+
+      {showLogin && <LoginModal onClose={()=>setShowLogin(false)} onLoggedIn={(s)=>{setSession(s); setShowLogin(false);}} />}
+
+      {tab === 'submit' && session && <SubmitTipForm session={session} onDone={()=>setTab('browse')} />}
+      {tab === 'approve' && session && session.role==='מאשר' && <ApprovalQueue session={session} />}
+
+      {tab === 'browse' && (
+        <div className="flex-1 flex flex-col">
+          <div className="px-4 pt-4">
+            <input type="text" placeholder="חפשו טיפ..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
+              className="w-full bg-white text-gray-800 px-4 py-4 rounded-2xl text-base font-semibold placeholder-gray-400 focus:outline-none"
+              style={{border:"2.5px solid #2db8a0", boxShadow:"0 3px 0px #0d6e5f"}} />
+          </div>
+          {!searchQuery && (
+            <div className="px-4 pt-4">
+              <div className="grid grid-cols-4 gap-2">
+                {CATS.map(c => (
+                  <button key={c.key} onClick={()=>setSelectedCat(selectedCat===c.key?null:c.key)}
+                    className={`p-2 rounded-2xl text-xs font-bold h-14 btn-3d border ${selectedCat===c.key?'bg-teal-600 text-white border-b-teal-800 border-teal-700':'bg-white text-gray-700 border-b-gray-300 border-gray-200'}`}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="px-4 pt-4 pb-8 space-y-3">
+            {filtered.map(t => {
+              const isOpen = expanded === t.id;
+              return (
+                <div key={t.id} className={`bg-white rounded-2xl border overflow-hidden shadow-sm ${isOpen?'border-teal-400 ring-2 ring-teal-100':'border-gray-200/80'}`}>
+                  <button onClick={()=>setExpanded(isOpen?null:t.id)} className="w-full text-right p-4">
+                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md font-semibold">{catLabel(t.category)}</span>
+                    <p className="font-extrabold text-gray-800 mt-1">{t.name}</p>
+                  </button>
+                  {isOpen && (
+                    <div className="step-fade border-t border-gray-100 px-4 pb-4 pt-3 bg-gray-50/30 space-y-2">
+                      {t.essence && <p className="text-sm text-gray-600">{t.essence}</p>}
+                      <ol className="list-decimal pr-5 text-sm text-gray-700 space-y-1">
+                        {(t.steps||[]).map((s,i)=><li key={i}>{s}</li>)}
+                      </ol>
+                      {t.uses && <p className="text-sm text-gray-500"><b>שימושים אפשריים:</b> {t.uses}</p>}
+                      {t.infographicUrl && <a href={t.infographicUrl} target="_blank" className="text-sm text-blue-600 underline block">📎 אינפוגרפיקה מצורפת</a>}
+                      <p className="text-xs text-gray-400">מציע/ה: {t.submitter}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {filtered.length===0 && <p className="text-center text-gray-400 py-8">לא נמצאו טיפים מתאימים</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
