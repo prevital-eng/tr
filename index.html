@@ -66,55 +66,41 @@ function fileToBase64(file) {
 
 // ════════ מסך כניסה למורשים ════════
 function LoginModal({ onClose, onLoggedIn }) {
-  const [status, setStatus] = useState('');
-  const [denied, setDenied] = useState('');
-  const btnRef = React.useRef(null);
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
 
-  const verifyEmail = (email) => {
-    setStatus('בודקת הרשאות...');
-    api('getRole', { email }).then(res => {
+  const submit = () => {
+    if (!email.trim()) { setErr('נא למלא כתובת מייל'); return; }
+    setLoading(true); setErr('');
+    api('getRole', { email: email.trim().toLowerCase() }).then(res => {
+      setLoading(false);
       if (res.role === 'מעלה' || res.role === 'מאשר') {
-        const session = { email, role: res.role };
+        const session = { email: email.trim().toLowerCase(), role: res.role };
         localStorage.setItem('tips_session', JSON.stringify(session));
         onLoggedIn(session);
       } else {
-        setStatus('');
-        setDenied('כתובת המייל הזו לא מורשית. פני למנהל המערכת להוספה.');
+        setErr('כתובת המייל הזו לא מורשית. פני למנהל המערכת להוספה.');
       }
-    }).catch(() => { setStatus(''); setDenied('שגיאת תקשורת, נסי שוב'); });
+    }).catch(() => { setLoading(false); setErr('שגיאת תקשורת, נסי שוב'); });
   };
-
-  const handleCredential = (response) => {
-    try {
-      const parts = response.credential.split('.');
-      const payload = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')));
-      verifyEmail((payload.email || '').toLowerCase().trim());
-    } catch(e) {
-      setDenied('שגיאה בקריאת פרטי המשתמש. נסי שוב.');
-    }
-  };
-
-  useEffect(() => {
-    const init = () => {
-      if (!window.google || !window.google.accounts) return;
-      google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredential, ux_mode: 'popup' });
-      if (btnRef.current) {
-        google.accounts.id.renderButton(btnRef.current, { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', locale: 'iw' });
-      }
-    };
-    if (window.google && window.google.accounts) init();
-    else { const t = setInterval(() => { if (window.google && window.google.accounts) { clearInterval(t); init(); } }, 200); return () => clearInterval(t); }
-  }, []);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-6">
       <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-xs w-full text-center">
         <h3 className="font-extrabold text-lg text-blue-900 mb-1">כניסת מורשים</h3>
-        <p className="text-xs text-gray-500 mb-4">התחברי עם חשבון Google שלך</p>
-        <div ref={btnRef} className="flex justify-center mb-3"></div>
-        {status && <p className="text-sky-700 text-sm mb-2">{status}</p>}
-        {denied && <p className="text-red-500 text-sm mb-3">{denied}</p>}
-        <button onClick={onClose} className="w-full py-2.5 rounded-full font-bold border-2 border-gray-300 text-gray-600 btn-3d">ביטול</button>
+        <p className="text-xs text-gray-500 mb-4">הקלידי את כתובת המייל שלך — תזכר אוטומטית בפעם הבאה</p>
+        <input placeholder="כתובת מייל" value={email} onChange={e=>setEmail(e.target.value)}
+          onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
+          className="w-full mb-3 p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600 text-center" />
+        {err && <p className="text-red-500 text-sm mb-3">{err}</p>}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-full font-bold border-2 border-gray-300 text-gray-600 btn-3d">ביטול</button>
+          <button onClick={submit} disabled={loading}
+            className="flex-1 py-2.5 rounded-full font-bold text-white border-2 border-blue-900 btn-3d" style={{background:"#0284c7"}}>
+            {loading ? '...בודקת' : 'כניסה'}
+          </button>
+        </div>
       </div>
     </div>
   );
