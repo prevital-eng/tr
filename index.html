@@ -47,6 +47,16 @@ const PLATFORMS = [{key:"all",label:"הכל"},{key:"android",label:"אנדרוא
 const DIFFICULTIES = [{key:"קל",label:"קל"},{key:"בינוני",label:"בינוני"},{key:"מתקדם",label:"מתקדם"}];
 const catLabel = k => (CATS.find(c=>c.key===k)||{}).label || k;
 
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+const isUrl = s => /^https?:\/\//.test(s);
+function Linkify({ text }) {
+  if (!text) return null;
+  const parts = String(text).split(URL_RE);
+  return parts.map((part, i) =>
+    isUrl(part) ? <a key={i} href={part} target="_blank" rel="noopener" className="text-sky-700 underline break-all" onClick={e=>e.stopPropagation()}>{part}</a> : <React.Fragment key={i}>{part}</React.Fragment>
+  );
+}
+
 function api(sub, params, method, body) {
   let url = APPS_SCRIPT_URL + '?action=tips&sub=' + sub;
   Object.keys(params||{}).forEach(k => { url += '&' + k + '=' + encodeURIComponent(params[k]); });
@@ -66,41 +76,64 @@ function fileToBase64(file) {
 
 // ════════ מסך כניסה למורשים ════════
 function LoginModal({ onClose, onLoggedIn }) {
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('');
   const [err, setErr] = useState('');
 
-  const submit = () => {
-    if (!email.trim()) { setErr('נא למלא כתובת מייל'); return; }
-    setLoading(true); setErr('');
-    api('getRole', { email: email.trim().toLowerCase() }).then(res => {
-      setLoading(false);
+  const verifyEmail = (email, name) => {
+    setStatus('בודקת הרשאות עבור ' + email + '...');
+    api('getRole', { email }).then(res => {
       if (res.role === 'מעלה' || res.role === 'מאשר') {
-        const session = { email: email.trim().toLowerCase(), role: res.role };
+        const session = { email, name: name || email, role: res.role };
         localStorage.setItem('tips_session', JSON.stringify(session));
         onLoggedIn(session);
       } else {
+        setStatus('');
         setErr('כתובת המייל הזו לא מורשית. פני למנהל המערכת להוספה.');
       }
-    }).catch(() => { setLoading(false); setErr('שגיאת תקשורת, נסי שוב'); });
+    }).catch(() => { setStatus(''); setErr('שגיאת תקשורת, נסי שוב'); });
+  };
+
+  const handleCredential = (response) => {
+    try {
+      const parts = response.credential.split('.');
+      const payload = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')));
+      verifyEmail((payload.email||'').toLowerCase().trim(), payload.name);
+    } catch(e) { setErr('שגיאה בקריאת פרטי המשתמש. נסי שוב.'); }
+  };
+
+  const fetchUserInfo = (accessToken) => {
+    fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + accessToken } })
+      .then(r => r.json())
+      .then(info => verifyEmail((info.email||'').toLowerCase().trim(), info.name))
+      .catch(() => setErr('לא ניתן לאמת. בדקי חיבור ונסי שוב.'));
+  };
+
+  const startSignIn = () => {
+    setErr(''); setStatus('פותחת חלון כניסה...');
+    if (!window.google || !window.google.accounts) { setErr('שירות Google לא נטען, נסי שוב'); setStatus(''); return; }
+    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleCredential, auto_select: false, ux_mode: 'popup' });
+    google.accounts.id.prompt((notification) => {
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: 'email profile',
+          callback: (tokenResponse) => { if (tokenResponse.access_token) fetchUserInfo(tokenResponse.access_token); else setStatus(''); }
+        }).requestAccessToken();
+      }
+    });
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-6">
       <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-xs w-full text-center">
         <h3 className="font-extrabold text-lg text-blue-900 mb-1">כניסת מורשים</h3>
-        <p className="text-xs text-gray-500 mb-4">הקלידי את כתובת המייל שלך — תזכר אוטומטית בפעם הבאה</p>
-        <input placeholder="כתובת מייל" value={email} onChange={e=>setEmail(e.target.value)}
-          onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
-          className="w-full mb-3 p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600 text-center" />
+        <p className="text-xs text-gray-500 mb-4">התחברי עם חשבון Google שלך — תיזכרי אוטומטית בפעם הבאה</p>
+        <button onClick={startSignIn} className="w-full mb-3 py-3 rounded-full font-bold text-white border-2 border-blue-900 btn-3d flex items-center justify-center gap-2" style={{background:"#0284c7"}}>
+          <span>G</span> התחברי עם Google
+        </button>
+        {status && <p className="text-sky-700 text-sm mb-2">{status}</p>}
         {err && <p className="text-red-500 text-sm mb-3">{err}</p>}
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-full font-bold border-2 border-gray-300 text-gray-600 btn-3d">ביטול</button>
-          <button onClick={submit} disabled={loading}
-            className="flex-1 py-2.5 rounded-full font-bold text-white border-2 border-blue-900 btn-3d" style={{background:"#0284c7"}}>
-            {loading ? '...בודקת' : 'כניסה'}
-          </button>
-        </div>
+        <button onClick={onClose} className="w-full py-2.5 rounded-full font-bold border-2 border-gray-300 text-gray-600 btn-3d">ביטול</button>
       </div>
     </div>
   );
@@ -108,7 +141,7 @@ function LoginModal({ onClose, onLoggedIn }) {
 
 // ════════ טופס הוספת טיפ ════════
 function SubmitTipForm({ session, onDone }) {
-  const [submitterName, setSubmitterName] = useState(() => localStorage.getItem('tips_submitter_name') || '');
+  const [submitterName, setSubmitterName] = useState(() => localStorage.getItem('tips_submitter_name') || session.name || '');
   const [name, setName] = useState('');
   const [essence, setEssence] = useState('');
   const [category, setCategory] = useState(CATS[0].key);
@@ -190,6 +223,37 @@ function SubmitTipForm({ session, onDone }) {
   );
 }
 
+function WhatsappImport({ session }) {
+  const [chatText, setChatText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const run = () => {
+    if (!chatText.trim()) { setMsg('הדביקי קודם את קטע הצ\'אט'); return; }
+    setBusy(true); setMsg('מנתחת את הצ\'אט... זה עשוי לקחת כמה שניות');
+    api('importWhatsapp', {}, 'POST', { email: session.email, submitterName: session.name || session.email, chatText: chatText.trim() })
+      .then(res => {
+        setBusy(false);
+        if (res.ok) { setMsg(`✓ חולצו ${res.count} טיפים ונשלחו לתור האישורים`); setChatText(''); }
+        else setMsg('שגיאה: ' + (res.error||''));
+      }).catch(() => { setBusy(false); setMsg('שגיאת תקשורת'); });
+  };
+
+  return (
+    <div className="p-4 space-y-3">
+      <h3 className="font-extrabold text-lg text-blue-900">ייבוא טיפים מוואטסאפ</h3>
+      <p className="text-sm text-gray-500">הדביקי כאן קטע צ'אט עם טיפים, והמערכת תזהה ותפריד אותם אוטומטית לטיפים נפרדים בתור האישורים.</p>
+      <textarea placeholder="הדביקי כאן את הצ'אט..." value={chatText} onChange={e=>setChatText(e.target.value)}
+        rows={10} className="w-full p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600 text-sm" />
+      {msg && <p className="text-sm font-bold text-center text-sky-700">{msg}</p>}
+      <button onClick={run} disabled={busy}
+        className="w-full py-3 rounded-full font-extrabold text-white border-2 border-blue-900 btn-3d" style={{background:"#0284c7"}}>
+        {busy ? 'מנתחת...' : 'נתחי וייבאי'}
+      </button>
+    </div>
+  );
+}
+
 // ════════ תור אישורים ════════
 function ApprovalQueue({ session }) {
   const [pending, setPending] = useState(null);
@@ -199,7 +263,7 @@ function ApprovalQueue({ session }) {
   useEffect(() => { load(); }, []);
 
   const decide = (id, decision) => {
-    api('decide', {}, 'POST', { email: session.email, approverName: session.email, id, decision, note: notes[id]||'' })
+    api('decide', {}, 'POST', { email: session.email, approverName: session.name || session.email, id, decision, note: notes[id]||'' })
       .then(() => load());
   };
 
@@ -212,11 +276,11 @@ function ApprovalQueue({ session }) {
       {pending.map(t => (
         <div key={t.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-2">
           <p className="font-extrabold text-gray-800">{t.name} <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md">{catLabel(t.category)}</span></p>
-          <p className="text-sm text-gray-600">{t.essence}</p>
+          <p className="text-sm text-gray-600"><Linkify text={t.essence} /></p>
           <ol className="list-decimal pr-5 text-sm text-gray-700 space-y-1">
-            {t.steps.map((s,i)=><li key={i}>{s}</li>)}
+            {t.steps.map((s,i)=><li key={i}><Linkify text={s} /></li>)}
           </ol>
-          {t.uses && <p className="text-sm text-gray-500"><b>שימושים:</b> {t.uses}</p>}
+          {t.uses && <p className="text-sm text-gray-500"><b>שימושים:</b> <Linkify text={t.uses} /></p>}
           <p className="text-xs text-gray-400">מציע/ה: {t.submitter} ({t.email})</p>
           {t.infographicUrl && <a href={t.infographicUrl} target="_blank" className="text-xs text-blue-600 underline">קובץ אינפוגרפיקה מצורף</a>}
           <input placeholder="הערה (לא חובה)" value={notes[t.id]||''} onChange={e=>setNotes({...notes,[t.id]:e.target.value})}
@@ -262,7 +326,7 @@ function App() {
         <div className="flex items-center justify-between mb-1">
           <span className="font-extrabold text-xl tracking-tight">💡 מאגר טיפים</span>
           {session ? (
-            <button onClick={logout} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">{session.email} ({session.role}) · יציאה</button>
+            <button onClick={logout} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">{session.name || session.email} ({session.role}) · יציאה</button>
           ) : (
             <button onClick={()=>setShowLogin(true)} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">כניסת מורשים</button>
           )}
@@ -271,6 +335,7 @@ function App() {
           <div className="flex gap-2 mt-2">
             <button onClick={()=>setTab('browse')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='browse'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>עיון</button>
             <button onClick={()=>setTab('submit')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='submit'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>הוספת טיפ</button>
+            <button onClick={()=>setTab('whatsapp')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='whatsapp'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>ייבוא מוואטסאפ</button>
             {session.role==='מאשר' && <button onClick={()=>setTab('approve')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='approve'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>אישורים</button>}
           </div>
         )}
@@ -279,6 +344,7 @@ function App() {
       {showLogin && <LoginModal onClose={()=>setShowLogin(false)} onLoggedIn={(s)=>{setSession(s); setShowLogin(false);}} />}
 
       {tab === 'submit' && session && <SubmitTipForm session={session} onDone={()=>setTab('browse')} />}
+      {tab === 'whatsapp' && session && <WhatsappImport session={session} />}
       {tab === 'approve' && session && session.role==='מאשר' && <ApprovalQueue session={session} />}
 
       {tab === 'browse' && (
@@ -304,20 +370,25 @@ function App() {
             {filtered.map(t => {
               const isOpen = expanded === t.id;
               return (
-                <div key={t.id} className={`bg-white rounded-2xl border overflow-hidden shadow-sm ${isOpen?'border-sky-400 ring-2 ring-sky-100':'border-gray-200/80'}`}>
-                  <button onClick={()=>setExpanded(isOpen?null:t.id)} className="w-full text-right p-4">
-                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md font-semibold">{catLabel(t.category)}</span>
-                    <p className="font-extrabold text-gray-800 mt-1">{t.name}</p>
+                <div key={t.id} className={`rounded-3xl overflow-hidden transition-shadow ${isOpen?'shadow-md':'shadow-sm'}`} style={{background:'#fff'}}>
+                  <button onClick={()=>setExpanded(isOpen?null:t.id)} className="w-full text-right p-4 flex items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[11px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-bold">{catLabel(t.category)}</span>
+                      <p className="font-extrabold text-blue-900 mt-1.5 leading-snug">{t.name}</p>
+                    </div>
+                    <span className={`text-sky-600 text-lg shrink-0 transition-transform ${isOpen?'rotate-180':''}`}>⌄</span>
                   </button>
                   {isOpen && (
-                    <div className="step-fade border-t border-gray-100 px-4 pb-4 pt-3 bg-gray-50/30 space-y-2">
-                      {t.essence && <p className="text-sm text-gray-600">{t.essence}</p>}
-                      <ol className="list-decimal pr-5 text-sm text-gray-700 space-y-1">
-                        {(t.steps||[]).map((s,i)=><li key={i}>{s}</li>)}
-                      </ol>
-                      {t.uses && <p className="text-sm text-gray-500"><b>שימושים אפשריים:</b> {t.uses}</p>}
-                      {t.infographicUrl && <a href={t.infographicUrl} target="_blank" className="text-sm text-blue-600 underline block">📎 אינפוגרפיקה מצורפת</a>}
-                      <p className="text-xs text-gray-400">מציע/ה: {t.submitter}</p>
+                    <div className="step-fade mx-3 mb-3 rounded-2xl p-4 space-y-2.5" style={{background:'#eaf4fb'}}>
+                      {t.essence && <p className="text-sm text-gray-700 leading-relaxed"><Linkify text={t.essence} /></p>}
+                      {(t.steps||[]).length > 0 && (
+                        <ol className="list-decimal pr-5 text-sm text-gray-700 space-y-1.5">
+                          {(t.steps||[]).map((s,i)=><li key={i} className="leading-relaxed"><Linkify text={s} /></li>)}
+                        </ol>
+                      )}
+                      {t.uses && <p className="text-sm text-gray-600 leading-relaxed"><b className="text-blue-900">שימושים: </b><Linkify text={t.uses} /></p>}
+                      {t.infographicUrl && <a href={t.infographicUrl} target="_blank" rel="noopener" className="text-sm text-sky-700 underline block">📎 אינפוגרפיקה מצורפת</a>}
+                      <p className="text-xs text-gray-400 pt-1">מציע/ה: {t.submitter}</p>
                     </div>
                   )}
                 </div>
