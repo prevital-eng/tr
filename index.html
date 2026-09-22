@@ -32,7 +32,7 @@ body { font-family: 'Heebo', sans-serif; background: #bfdbee; -webkit-tap-highli
 const { useState, useEffect, useMemo, useCallback } = React;
 
 // ════════ הגדרות ════════
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxxY6_FRo9ZdVO-126ChM6-IcyUgQSoMP-id4wVMqtVA3hf6MnBL92w2u7cAFuouGn_/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyMegWSTE2m3KdtZ1-uTXU6MSyYRL9uihgHVRbulGTQoI2FArrlvk3sBfFigxkAT1-q/exec';
 const GOOGLE_CLIENT_ID = '882763453521-junm9rvoi5et71i4u03igoo211cfg225.apps.googleusercontent.com';
 
 const CATS = [
@@ -43,6 +43,7 @@ const CATS = [
   { key:"ai", label:"AI" }, { key:"banking", label:"בנקאות" },
   { key:"health", label:"בריאות" }, { key:"photos", label:"תמונות" },
   { key:"accessibility", label:"נגישות" },
+  { key:"scams", label:"הונאות ברשת" },
   { key:"other", label:"אחר" },
 ];
 const PLATFORMS = [{key:"all",label:"הכל"},{key:"android",label:"אנדרואיד"},{key:"iphone",label:"אייפון"}];
@@ -288,9 +289,13 @@ function ExcelImport({ session }) {
 function ApprovalQueue({ session }) {
   const [pending, setPending] = useState(null);
   const [notes, setNotes] = useState({});
+  const [stats, setStats] = useState(null);
 
   const load = () => api('pending', { email: session.email }).then(res => setPending(res.tips || []));
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api('getStats', {}).then(res => setStats(res.stats)).catch(()=>{});
+  }, []);
 
   const decide = (id, decision) => {
     api('decide', {}, 'POST', { email: session.email, approverName: session.name || session.email, id, decision, note: notes[id]||'' })
@@ -298,10 +303,25 @@ function ApprovalQueue({ session }) {
   };
 
   if (pending === null) return <p className="p-6 text-center text-gray-400">טוען...</p>;
-  if (pending.length === 0) return <p className="p-6 text-center text-gray-400">אין טיפים הממתינים לאישור כרגע 🎉</p>;
 
   return (
     <div className="p-4 space-y-3">
+      {stats && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-3 shadow-sm flex justify-around text-center">
+          <div>
+            <p className="text-xs text-gray-400">כניסות מורשים</p>
+            <p className="font-extrabold text-lg text-sky-700">{stats.auth}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">כניסות אנונימיות</p>
+            <p className="font-extrabold text-lg text-sky-700">{stats.anon}</p>
+          </div>
+        </div>
+      )}
+      {pending.length === 0 ? (
+        <p className="p-6 text-center text-gray-400">אין טיפים הממתינים לאישור כרגע 🎉</p>
+      ) : (
+      <>
       <h3 className="font-extrabold text-lg text-gray-800">טיפים הממתינים לאישור ({pending.length})</h3>
       {pending.map(t => (
         <div key={t.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-2">
@@ -321,11 +341,11 @@ function ApprovalQueue({ session }) {
           </div>
         </div>
       ))}
+      </>
+      )}
     </div>
   );
 }
-
-// ════════ מסך ראשי - עיון וחיפוש ════════
 function App() {
   const [session, setSession] = useState(() => { try { return JSON.parse(localStorage.getItem('tips_session')); } catch(e){ return null; } });
   const [showLogin, setShowLogin] = useState(false);
@@ -336,6 +356,7 @@ function App() {
   const [expanded, setExpanded] = useState(null);
 
   useEffect(() => { api('approved', {}).then(res => setApprovedRemote(res.tips || [])).catch(()=>{}); }, [tab]);
+  useEffect(() => { api('logVisit', { type: session ? 'auth' : 'anon' }).catch(()=>{}); }, []);
 
   const allTips = useMemo(() => [...(window.legacyTips||[]), ...approvedRemote], [approvedRemote]);
 
