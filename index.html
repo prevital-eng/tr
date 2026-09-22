@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
@@ -41,11 +42,13 @@ const CATS = [
   { key:"nav", label:"ניווט" }, { key:"zoom", label:"זום" },
   { key:"ai", label:"AI" }, { key:"banking", label:"בנקאות" },
   { key:"health", label:"בריאות" }, { key:"photos", label:"תמונות" },
+  { key:"accessibility", label:"נגישות" },
   { key:"other", label:"אחר" },
 ];
 const PLATFORMS = [{key:"all",label:"הכל"},{key:"android",label:"אנדרואיד"},{key:"iphone",label:"אייפון"}];
 const DIFFICULTIES = [{key:"קל",label:"קל"},{key:"בינוני",label:"בינוני"},{key:"מתקדם",label:"מתקדם"}];
 const catLabel = k => (CATS.find(c=>c.key===k)||{}).label || k;
+const CAT_BY_LABEL = Object.fromEntries(CATS.map(c => [c.label, c.key]));
 
 const URL_RE = /(https?:\/\/[^\s]+)/g;
 const isUrl = s => /^https?:\/\//.test(s);
@@ -223,33 +226,60 @@ function SubmitTipForm({ session, onDone }) {
   );
 }
 
-function WhatsappImport({ session }) {
-  const [chatText, setChatText] = useState('');
+function ExcelImport({ session }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [fileName, setFileName] = useState('');
 
-  const run = () => {
-    if (!chatText.trim()) { setMsg('הדביקי קודם את קטע הצ\'אט'); return; }
-    setBusy(true); setMsg('מנתחת את הצ\'אט... זה עשוי לקחת כמה שניות');
-    api('importWhatsapp', {}, 'POST', { email: session.email, submitterName: session.name || session.email, chatText: chatText.trim() })
-      .then(res => {
-        setBusy(false);
-        if (res.ok) { setMsg(`✓ חולצו ${res.count} טיפים ונשלחו לתור האישורים`); setChatText(''); }
-        else setMsg('שגיאה: ' + (res.error||''));
-      }).catch(() => { setBusy(false); setMsg('שגיאת תקשורת'); });
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFileName(file.name); setMsg(''); setBusy(true);
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+        const tips = rows.map(r => {
+          const stepsRaw = String(r['שלבי עבודה'] || '');
+          const steps = stepsRaw.split(/;|\n/).map(s => s.trim()).filter(Boolean);
+          const catLabelIn = String(r['קטגוריה'] || '').trim();
+          return {
+            name: String(r['שם'] || '').trim(),
+            essence: String(r['מהות'] || '').trim(),
+            steps,
+            uses: String(r['שימושים אפשריים'] || '').trim(),
+            submitterName: String(r['שם המציע'] || session.name || session.email).trim(),
+            category: CAT_BY_LABEL[catLabelIn] || 'other',
+            difficulty: DIFFICULTIES.find(d => d.key === String(r['רמת קושי']||'').trim()) ? String(r['רמת קושי']).trim() : 'קל',
+          };
+        }).filter(t => t.name && t.essence && t.steps.length);
+
+        if (!tips.length) { setBusy(false); setMsg('לא נמצאו שורות תקינות בקובץ'); return; }
+
+        api('importExcelRows', {}, 'POST', { email: session.email, tips }).then(res => {
+          setBusy(false);
+          if (res.ok) { setMsg(`✓ יובאו ${res.count} טיפים ונשלחו לתור האישורים`); setFileName(''); }
+          else setMsg('שגיאה: ' + (res.error || ''));
+        }).catch(() => { setBusy(false); setMsg('שגיאת תקשורת'); });
+      } catch (err) {
+        setBusy(false); setMsg('שגיאה בקריאת הקובץ: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   return (
     <div className="p-4 space-y-3">
-      <h3 className="font-extrabold text-lg text-blue-900">ייבוא טיפים מוואטסאפ</h3>
-      <p className="text-sm text-gray-500">הדביקי כאן קטע צ'אט עם טיפים, והמערכת תזהה ותפריד אותם אוטומטית לטיפים נפרדים בתור האישורים.</p>
-      <textarea placeholder="הדביקי כאן את הצ'אט..." value={chatText} onChange={e=>setChatText(e.target.value)}
-        rows={10} className="w-full p-3 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600 text-sm" />
+      <h3 className="font-extrabold text-lg text-blue-900">ייבוא טיפים מקובץ אקסל</h3>
+      <p className="text-sm text-gray-500">בחרי קובץ xlsx עם העמודות: מהות, שם, שלבי עבודה (מופרדים בנקודה-פסיק ; או בשורה חדשה), שימושים אפשריים, שם המציע, קטגוריה, רמת קושי.</p>
+      <input type="file" accept=".xlsx,.xls" onChange={handleFile} disabled={busy} className="text-sm" />
+      {fileName && <p className="text-xs text-gray-400">קובץ: {fileName}</p>}
+      {busy && <p className="text-sm text-center text-sky-700">מייבאת...</p>}
       {msg && <p className="text-sm font-bold text-center text-sky-700">{msg}</p>}
-      <button onClick={run} disabled={busy}
-        className="w-full py-3 rounded-full font-extrabold text-white border-2 border-blue-900 btn-3d" style={{background:"#0284c7"}}>
-        {busy ? 'מנתחת...' : 'נתחי וייבאי'}
-      </button>
     </div>
   );
 }
@@ -335,7 +365,7 @@ function App() {
           <div className="flex gap-2 mt-2">
             <button onClick={()=>setTab('browse')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='browse'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>עיון</button>
             <button onClick={()=>setTab('submit')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='submit'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>הוספת טיפ</button>
-            <button onClick={()=>setTab('whatsapp')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='whatsapp'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>ייבוא מוואטסאפ</button>
+            <button onClick={()=>setTab('whatsapp')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='whatsapp'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>ייבוא מאקסל</button>
             {session.role==='מאשר' && <button onClick={()=>setTab('approve')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='approve'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>אישורים</button>}
           </div>
         )}
@@ -344,7 +374,7 @@ function App() {
       {showLogin && <LoginModal onClose={()=>setShowLogin(false)} onLoggedIn={(s)=>{setSession(s); setShowLogin(false);}} />}
 
       {tab === 'submit' && session && <SubmitTipForm session={session} onDone={()=>setTab('browse')} />}
-      {tab === 'whatsapp' && session && <WhatsappImport session={session} />}
+      {tab === 'whatsapp' && session && <ExcelImport session={session} />}
       {tab === 'approve' && session && session.role==='מאשר' && <ApprovalQueue session={session} />}
 
       {tab === 'browse' && (
