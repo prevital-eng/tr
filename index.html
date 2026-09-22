@@ -290,6 +290,8 @@ function ApprovalQueue({ session }) {
   const [pending, setPending] = useState(null);
   const [notes, setNotes] = useState({});
   const [stats, setStats] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [selected, setSelected] = useState({});
 
   const load = () => api('pending', { email: session.email }).then(res => setPending(res.tips || []));
   useEffect(() => {
@@ -300,6 +302,33 @@ function ApprovalQueue({ session }) {
   const decide = (id, decision) => {
     api('decide', {}, 'POST', { email: session.email, approverName: session.name || session.email, id, decision, note: notes[id]||'' })
       .then(() => load());
+  };
+
+  const toggleSelect = (id) => setSelected(s => ({ ...s, [id]: !s[id] }));
+  const selectedIds = Object.keys(selected).filter(id => selected[id]);
+
+  const approveAll = async () => {
+    if (!pending || !pending.length) return;
+    if (!window.confirm(`לאשר את כל ${pending.length} הטיפים הממתינים?`)) return;
+    setBulkBusy(true);
+    for (const t of pending) {
+      await api('decide', {}, 'POST', { email: session.email, approverName: session.name || session.email, id: t.id, decision: 'approve', note: notes[t.id]||'' });
+    }
+    setBulkBusy(false);
+    setSelected({});
+    load();
+  };
+
+  const approveSelected = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`לאשר ${selectedIds.length} טיפים נבחרים?`)) return;
+    setBulkBusy(true);
+    for (const id of selectedIds) {
+      await api('decide', {}, 'POST', { email: session.email, approverName: session.name || session.email, id, decision: 'approve', note: notes[id]||'' });
+    }
+    setBulkBusy(false);
+    setSelected({});
+    load();
   };
 
   if (pending === null) return <p className="p-6 text-center text-gray-400">טוען...</p>;
@@ -322,10 +351,28 @@ function ApprovalQueue({ session }) {
         <p className="p-6 text-center text-gray-400">אין טיפים הממתינים לאישור כרגע 🎉</p>
       ) : (
       <>
-      <h3 className="font-extrabold text-lg text-gray-800">טיפים הממתינים לאישור ({pending.length})</h3>
+      <h3 className="font-extrabold text-lg text-gray-800 flex items-center justify-between flex-wrap gap-2">
+        <span>טיפים הממתינים לאישור ({pending.length})</span>
+        <div className="flex gap-2">
+          {selectedIds.length > 0 && (
+            <button onClick={approveSelected} disabled={bulkBusy}
+              className="text-xs px-3 py-1.5 rounded-full font-bold text-white btn-3d border border-b-sky-800 border-sky-600" style={{background:"#0284c7"}}>
+              {bulkBusy ? 'מאשרת...' : `אשר נבחרים (${selectedIds.length})`}
+            </button>
+          )}
+          <button onClick={approveAll} disabled={bulkBusy}
+            className="text-xs px-3 py-1.5 rounded-full font-bold text-white btn-3d border border-b-green-800 border-green-600" style={{background:"#16a34a"}}>
+            {bulkBusy ? 'מאשרת...' : 'אשר הכל'}
+          </button>
+        </div>
+      </h3>
       {pending.map(t => (
         <div key={t.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-2">
-          <p className="font-extrabold text-gray-800">{t.name} <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md">{catLabel(t.category)}</span></p>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={!!selected[t.id]} onChange={()=>toggleSelect(t.id)}
+              className="mt-1.5 w-5 h-5 accent-sky-600 shrink-0" />
+            <p className="font-extrabold text-gray-800">{t.name} <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md">{catLabel(t.category)}</span></p>
+          </label>
           <p className="text-sm text-gray-600"><Linkify text={t.essence} /></p>
           <ol className="list-decimal pr-5 text-sm text-gray-700 space-y-1">
             {t.steps.map((s,i)=><li key={i}><Linkify text={s} /></li>)}
@@ -346,6 +393,96 @@ function ApprovalQueue({ session }) {
     </div>
   );
 }
+
+// ════════ ניהול טיפים (עריכה/מחיקה) ════════
+function ManageTips({ session }) {
+  const [tips, setTips] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = () => api('approved', {}).then(res => setTips(res.tips || []));
+  useEffect(() => { load(); }, []);
+
+  const startEdit = (t) => {
+    setEditingId(t.id);
+    setForm({ name: t.name, essence: t.essence, category: t.category, difficulty: t.difficulty || 'קל',
+      stepsText: (t.steps || []).join('\n'), uses: t.uses || '' });
+  };
+  const cancelEdit = () => { setEditingId(null); setForm(null); };
+
+  const saveEdit = (id) => {
+    setSaving(true);
+    api('updateTip', {}, 'POST', {
+      email: session.email, id,
+      name: form.name.trim(), essence: form.essence.trim(), category: form.category,
+      difficulty: form.difficulty, uses: form.uses.trim(),
+      steps: form.stepsText.split('\n').map(s=>s.trim()).filter(Boolean)
+    }).then(res => {
+      setSaving(false);
+      if (res.ok) { cancelEdit(); load(); }
+      else alert('שגיאה: ' + (res.error||''));
+    }).catch(()=>{ setSaving(false); alert('שגיאת תקשורת'); });
+  };
+
+  const removeTip = (id, name) => {
+    if (!window.confirm(`למחוק לצמיתות את הטיפ "${name}"?`)) return;
+    api('deleteTip', {}, 'POST', { email: session.email, id }).then(res => {
+      if (res.ok) load();
+      else alert('שגיאה: ' + (res.error||''));
+    }).catch(()=>alert('שגיאת תקשורת'));
+  };
+
+  if (tips === null) return <p className="p-6 text-center text-gray-400">טוען...</p>;
+  if (tips.length === 0) return <p className="p-6 text-center text-gray-400">אין עדיין טיפים מאושרים</p>;
+
+  return (
+    <div className="p-4 space-y-3">
+      <h3 className="font-extrabold text-lg text-gray-800">ניהול טיפים מאושרים ({tips.length})</h3>
+      {tips.map(t => (
+        <div key={t.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-2">
+          {editingId === t.id ? (
+            <div className="space-y-2">
+              <input value={form.name} onChange={e=>setForm({...form, name:e.target.value})}
+                className="w-full p-2 rounded-lg border-2 border-sky-300 font-bold text-sm" placeholder="שם הטיפ" />
+              <textarea value={form.essence} onChange={e=>setForm({...form, essence:e.target.value})}
+                rows={2} className="w-full p-2 rounded-lg border-2 border-sky-300 text-sm" placeholder="מהות" />
+              <div className="grid grid-cols-2 gap-2">
+                <select value={form.category} onChange={e=>setForm({...form, category:e.target.value})} className="p-2 rounded-lg border-2 border-sky-300 text-sm">
+                  {CATS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+                </select>
+                <select value={form.difficulty} onChange={e=>setForm({...form, difficulty:e.target.value})} className="p-2 rounded-lg border-2 border-sky-300 text-sm">
+                  {DIFFICULTIES.map(d=><option key={d.key} value={d.key}>{d.label}</option>)}
+                </select>
+              </div>
+              <textarea value={form.stepsText} onChange={e=>setForm({...form, stepsText:e.target.value})}
+                rows={4} className="w-full p-2 rounded-lg border-2 border-gray-200 text-sm" placeholder="שלבי עבודה - שורה לכל שלב" />
+              <textarea value={form.uses} onChange={e=>setForm({...form, uses:e.target.value})}
+                rows={2} className="w-full p-2 rounded-lg border-2 border-sky-300 text-sm" placeholder="שימושים אפשריים" />
+              <div className="flex gap-2">
+                <button onClick={()=>saveEdit(t.id)} disabled={saving}
+                  className="flex-1 py-2 rounded-xl font-bold text-white btn-3d border border-b-blue-900 border-sky-600" style={{background:"#0284c7"}}>
+                  {saving ? 'שומרת...' : 'שמור'}
+                </button>
+                <button onClick={cancelEdit} className="flex-1 py-2 rounded-xl font-bold border-2 border-gray-300 text-gray-600 btn-3d">ביטול</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="font-extrabold text-gray-800">{t.name} <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md">{catLabel(t.category)}</span></p>
+              <p className="text-sm text-gray-600"><Linkify text={t.essence} /></p>
+              <div className="flex gap-2">
+                <button onClick={()=>startEdit(t)} className="flex-1 py-2 rounded-xl font-bold text-white btn-3d border border-b-blue-900 border-sky-600" style={{background:"#0284c7"}}>ערוך</button>
+                <button onClick={()=>removeTip(t.id, t.name)} className="flex-1 py-2 rounded-xl font-bold text-white btn-3d border border-b-red-800 border-red-600" style={{background:"#dc2626"}}>מחק</button>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(() => { try { return JSON.parse(localStorage.getItem('tips_session')); } catch(e){ return null; } });
   const [showLogin, setShowLogin] = useState(false);
@@ -386,8 +523,9 @@ function App() {
           <div className="flex gap-2 mt-2">
             <button onClick={()=>setTab('browse')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='browse'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>עיון</button>
             <button onClick={()=>setTab('submit')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='submit'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>הוספת טיפ</button>
-            <button onClick={()=>setTab('whatsapp')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='whatsapp'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>ייבוא מאקסל</button>
+            {session.role==='מאשר' && <button onClick={()=>setTab('whatsapp')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='whatsapp'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>ייבוא מאקסל</button>}
             {session.role==='מאשר' && <button onClick={()=>setTab('approve')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='approve'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>אישורים</button>}
+            {session.role==='מאשר' && <button onClick={()=>setTab('manage')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='manage'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>ניהול טיפים</button>}
           </div>
         )}
       </header>
@@ -395,8 +533,9 @@ function App() {
       {showLogin && <LoginModal onClose={()=>setShowLogin(false)} onLoggedIn={(s)=>{setSession(s); setShowLogin(false);}} />}
 
       {tab === 'submit' && session && <SubmitTipForm session={session} onDone={()=>setTab('browse')} />}
-      {tab === 'whatsapp' && session && <ExcelImport session={session} />}
+      {tab === 'whatsapp' && session && session.role==='מאשר' && <ExcelImport session={session} />}
       {tab === 'approve' && session && session.role==='מאשר' && <ApprovalQueue session={session} />}
+      {tab === 'manage' && session && session.role==='מאשר' && <ManageTips session={session} />}
 
       {tab === 'browse' && (
         <div className="flex-1 flex flex-col">
