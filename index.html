@@ -231,11 +231,13 @@ function ExcelImport({ session }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [fileName, setFileName] = useState('');
+  const [defaultSubmitter, setDefaultSubmitter] = useState(() => localStorage.getItem('tips_submitter_name') || '');
 
   const handleFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setFileName(file.name); setMsg(''); setBusy(true);
+    localStorage.setItem('tips_submitter_name', defaultSubmitter.trim());
 
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -253,7 +255,7 @@ function ExcelImport({ session }) {
             essence: String(r['מהות'] || '').trim(),
             steps,
             uses: String(r['שימושים אפשריים'] || '').trim(),
-            submitterName: String(r['שם המציע'] || session.name || session.email).trim(),
+            submitterName: String(r['שם המציע'] || defaultSubmitter || session.name || session.email).trim(),
             category: CAT_BY_LABEL[catLabelIn] || 'other',
             difficulty: DIFFICULTIES.find(d => d.key === String(r['רמת קושי']||'').trim()) ? String(r['רמת קושי']).trim() : 'קל',
           };
@@ -277,6 +279,11 @@ function ExcelImport({ session }) {
     <div className="p-4 space-y-3">
       <h3 className="font-extrabold text-lg text-blue-900">ייבוא טיפים מקובץ אקסל</h3>
       <p className="text-sm text-gray-500">בחרי קובץ xlsx עם העמודות: מהות, שם, שלבי עבודה (מופרדים בנקודה-פסיק ; או בשורה חדשה), שימושים אפשריים, שם המציע, קטגוריה, רמת קושי.</p>
+      <div>
+        <p className="font-bold text-sm text-gray-600 mb-1">שם ברירת מחדל למציע (כשעמודת "שם המציע" ריקה בקובץ)</p>
+        <input value={defaultSubmitter} onChange={e=>setDefaultSubmitter(e.target.value)} placeholder="לדוגמה: דני פליס"
+          className="w-full p-2.5 rounded-xl border-2 border-sky-300 focus:outline-none focus:border-sky-600 text-sm" />
+      </div>
       <input type="file" accept=".xlsx,.xls" onChange={handleFile} disabled={busy} className="text-sm" />
       {fileName && <p className="text-xs text-gray-400">קובץ: {fileName}</p>}
       {busy && <p className="text-sm text-center text-sky-700">מייבאת...</p>}
