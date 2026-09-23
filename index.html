@@ -27,7 +27,6 @@ body { font-family: 'Heebo', sans-serif; background: #bfdbee; -webkit-tap-highli
 </head>
 <body>
 <div id="root"></div>
-<script src="legacy-tips.js"></script>
 <script type="text/babel">
 const { useState, useEffect, useMemo, useCallback } = React;
 
@@ -502,7 +501,7 @@ function App() {
   useEffect(() => { api('approved', {}).then(res => setApprovedRemote(res.tips || [])).catch(()=>{}); }, [tab]);
   useEffect(() => { api('logVisit', { type: session ? 'auth' : 'anon' }).catch(()=>{}); }, []);
 
-  const allTips = useMemo(() => [...(window.legacyTips||[]), ...approvedRemote], [approvedRemote]);
+  const allTips = useMemo(() => approvedRemote, [approvedRemote]);
 
   const fuse = useMemo(() => new Fuse(allTips, { keys: ['name','essence','uses'], threshold: 0.35 }), [allTips]);
 
