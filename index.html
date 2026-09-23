@@ -414,6 +414,8 @@ function ManageTips({ session }) {
 
   const toggleSelect = (id) => setSelected(s => ({ ...s, [id]: !s[id] }));
   const selectedIds = Object.keys(selected).filter(id => selected[id]);
+  const selectAll = () => setSelected(Object.fromEntries(tips.map(t => [t.id, true])));
+  const clearSelection = () => setSelected({});
 
   const deleteSelected = async () => {
     if (!selectedIds.length) return;
@@ -463,12 +465,20 @@ function ManageTips({ session }) {
     <div className="p-4 space-y-3">
       <h3 className="font-extrabold text-lg text-gray-800 flex items-center justify-between flex-wrap gap-2">
         <span>ניהול טיפים מאושרים ({tips.length})</span>
-        {selectedIds.length > 0 && (
-          <button onClick={deleteSelected} disabled={bulkBusy}
-            className="text-xs px-3 py-1.5 rounded-full font-bold text-white btn-3d border border-b-red-800 border-red-600" style={{background:"#dc2626"}}>
-            {bulkBusy ? 'מוחקת...' : `מחק נבחרים (${selectedIds.length})`}
-          </button>
-        )}
+        <div className="flex gap-2">
+          <button onClick={selectAll}
+            className="text-xs px-3 py-1.5 rounded-full font-bold border-2 border-sky-600 text-sky-700 btn-3d">בחר הכל</button>
+          {selectedIds.length > 0 && (
+            <button onClick={clearSelection}
+              className="text-xs px-3 py-1.5 rounded-full font-bold border-2 border-gray-300 text-gray-600 btn-3d">נקה בחירה</button>
+          )}
+          {selectedIds.length > 0 && (
+            <button onClick={deleteSelected} disabled={bulkBusy}
+              className="text-xs px-3 py-1.5 rounded-full font-bold text-white btn-3d border border-b-red-800 border-red-600" style={{background:"#dc2626"}}>
+              {bulkBusy ? 'מוחקת...' : `מחק נבחרים (${selectedIds.length})`}
+            </button>
+          )}
+        </div>
       </h3>
       {tips.map(t => (
         <div key={t.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm space-y-2">
@@ -524,6 +534,7 @@ function App() {
   const [tab, setTab] = useState('browse');
   const [approvedRemote, setApprovedRemote] = useState([]);
   const [selectedCat, setSelectedCat] = useState(null);
+  const [selectedSubmitter, setSelectedSubmitter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [expanded, setExpanded] = useState(null);
 
@@ -532,14 +543,20 @@ function App() {
 
   const allTips = useMemo(() => approvedRemote, [approvedRemote]);
 
+  const submitters = useMemo(() => {
+    const names = Array.from(new Set(allTips.map(t => t.submitter).filter(Boolean)));
+    return names.sort((a,b) => a.localeCompare(b, 'he'));
+  }, [allTips]);
+
   const fuse = useMemo(() => new Fuse(allTips, { keys: ['name','essence','uses'], threshold: 0.35 }), [allTips]);
 
   const filtered = useMemo(() => {
     let list = allTips;
     if (searchQuery.trim()) list = fuse.search(searchQuery).map(r=>r.item);
     else if (selectedCat) list = list.filter(t => t.category === selectedCat);
+    if (selectedSubmitter) list = list.filter(t => t.submitter === selectedSubmitter);
     return list;
-  }, [allTips, searchQuery, selectedCat, fuse]);
+  }, [allTips, searchQuery, selectedCat, selectedSubmitter, fuse]);
 
   const logout = () => { localStorage.removeItem('tips_session'); setSession(null); setTab('browse'); };
 
@@ -561,6 +578,22 @@ function App() {
             {session.role==='מאשר' && <button onClick={()=>setTab('whatsapp')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='whatsapp'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>ייבוא מאקסל</button>}
             {session.role==='מאשר' && <button onClick={()=>setTab('approve')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='approve'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>אישורים</button>}
             {session.role==='מאשר' && <button onClick={()=>setTab('manage')} className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${tab==='manage'?'bg-white text-sky-700 border-white':'bg-white/10 border-white/40'}`}>ניהול טיפים</button>}
+          </div>
+        )}
+        {tab === 'browse' && selectedCat && (
+          <div className="mt-2">
+            <button onClick={()=>setSelectedCat(null)}
+              className="text-xs bg-white text-sky-700 font-bold px-3 py-1.5 rounded-full btn-3d-header flex items-center gap-1">
+              <span>✕</span> יציאה מקטגוריית "{catLabel(selectedCat)}"
+            </button>
+          </div>
+        )}
+        {tab === 'browse' && selectedSubmitter && (
+          <div className="mt-2">
+            <button onClick={()=>setSelectedSubmitter('')}
+              className="text-xs bg-white text-sky-700 font-bold px-3 py-1.5 rounded-full btn-3d-header flex items-center gap-1">
+              <span>✕</span> יציאה מסינון מציע/ה "{selectedSubmitter}"
+            </button>
           </div>
         )}
       </header>
@@ -589,6 +622,16 @@ function App() {
                   </button>
                 ))}
               </div>
+              {submitters.length > 0 && (
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <label className="text-xs font-bold text-blue-900">סינון לפי מציע/ה:</label>
+                  <select value={selectedSubmitter} onChange={e=>setSelectedSubmitter(e.target.value)}
+                    className="px-3 py-2 rounded-full text-xs font-bold border-2 border-sky-600 text-blue-900 bg-sky-50">
+                    <option value="">הכל</option>
+                    {submitters.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           )}
           <div className="px-4 pt-4 pb-8 space-y-3">
