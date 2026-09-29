@@ -35,7 +35,7 @@ body { font-family: 'Heebo', sans-serif; background: #bfdbee; -webkit-tap-highli
 const { useState, useEffect, useMemo, useCallback } = React;
 
 // ════════ הגדרות ════════
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyy4Hwek6_Rx6wV8Ax9VluMnG4xJ4TO5RLrAvDtSUgWhwDb9rcNBceDhxrmA1xSk-fk/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzqE-EZmJEVLNPrV0V1_Si8fw2UyxKHq1pb2XnlZUY5zBlPaQbOaDUepQIzMW_l66dY/exec';
 const GOOGLE_CLIENT_ID = '882763453521-junm9rvoi5et71i4u03igoo211cfg225.apps.googleusercontent.com';
 
 const CATS = [
@@ -349,7 +349,7 @@ function ApprovalQueue({ session }) {
     load();
   };
 
-  if (pending === null) return <p className="p-6 text-center text-gray-400">טוען...</p>;
+  if (pending === null) return <InlineLoading text="טוענת טיפים ממתינים..." />;
 
   return (
     <div className="p-4 space-y-3">
@@ -470,7 +470,7 @@ function ManageTips({ session }) {
     }).catch(()=>alert('שגיאת תקשורת'));
   };
 
-  if (tips === null) return <p className="p-6 text-center text-gray-400">טוען...</p>;
+  if (tips === null) return <InlineLoading text="טוענת טיפים מאושרים..." />;
   if (tips.length === 0) return <p className="p-6 text-center text-gray-400">אין עדיין טיפים מאושרים</p>;
 
   return (
@@ -547,7 +547,7 @@ function LoadingScreen() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center py-16 px-6 text-center">
       {GIMLATECH_LOGO_URL ? (
-        <img src={GIMLATECH_LOGO_URL} alt="GimlaTech" className="loader-logo w-20 h-20 object-contain mb-4" />
+        <img src={GIMLATECH_LOGO_URL} alt="GimlaTech" className="loader-logo w-32 h-32 object-contain mb-4" />
       ) : (
         <div className="loader-logo text-6xl mb-4">💡</div>
       )}
@@ -555,6 +555,16 @@ function LoadingScreen() {
       <p className="text-blue-900 font-bold text-lg">טוענים את מאגר הטיפים...</p>
       <p className="text-gray-400 text-sm mt-1">רק רגע, זה לא אמור לקחת הרבה זמן</p>
       <p className="text-sky-700 font-bold text-sm mt-4">אנחנו כאן בשבילכם, גימלאטק 🧡</p>
+    </div>
+  );
+}
+
+function InlineLoading({ text }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-8 text-sky-700">
+      <img src="logo.png" alt="GimlaTech" className="loader-logo w-16 h-16 object-contain" />
+      <div className="loader-spin w-6 h-6 rounded-full border-4 border-sky-200 border-t-sky-600"></div>
+      <span className="text-sm font-bold">{text || 'טוען...'}</span>
     </div>
   );
 }
@@ -606,7 +616,7 @@ function App() {
       <header className="text-white p-4 sticky top-0 z-20" style={{background:"linear-gradient(160deg,#0c2461 0%,#1a4d8a 50%,#0284c7 100%)"}}>
         <div className="flex items-center justify-between mb-1">
           <span className="flex items-center gap-2">
-            <img src="logo.png" alt="GimlaTech" className="w-9 h-9 rounded-full object-cover shrink-0" />
+            <img src="logo.png" alt="GimlaTech" className="w-12 h-12 rounded-full object-cover shrink-0" />
             <span className="flex flex-col leading-tight">
               <span className="text-xs font-bold text-sky-200">גימלאטק</span>
               <span className="font-extrabold text-base sm:text-xl tracking-tight">מאגר הטיפים לאזרח הוותיק</span>
@@ -716,12 +726,7 @@ function App() {
                 הצג את כל הטיפים במאגר
               </button>
             )}
-            {loadingAll && (
-              <div className="flex items-center justify-center gap-2 py-4 text-sky-700">
-                <div className="loader-spin w-5 h-5 rounded-full border-4 border-sky-200 border-t-sky-600"></div>
-                <span className="text-sm font-bold">טוענת את שאר הטיפים...</span>
-              </div>
-            )}
+            {loadingAll && <InlineLoading text="טוענת את שאר הטיפים..." />}
             {!searchQuery && !selectedCat && !selectedSubmitter && dailyTips.length > 0 && (
               <div className="space-y-3 mb-2">
                 {dailyTips.map(t => (
