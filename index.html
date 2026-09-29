@@ -563,18 +563,26 @@ function App() {
   const [session, setSession] = useState(() => { try { return JSON.parse(localStorage.getItem('tips_session')); } catch(e){ return null; } });
   const [showLogin, setShowLogin] = useState(false);
   const [tab, setTab] = useState('browse');
-  const [approvedRemote, setApprovedRemote] = useState([]);
-  const [loadingTips, setLoadingTips] = useState(true);
+  const [approvedRemote, setApprovedRemote] = useState(null); // null = not loaded yet
+  const [dailyTips, setDailyTips] = useState([]);
+  const [loadingDaily, setLoadingDaily] = useState(true);
+  const [loadingAll, setLoadingAll] = useState(false);
   const [selectedCat, setSelectedCat] = useState(null);
   const [openGroup, setOpenGroup] = useState(null);
   const [selectedSubmitter, setSelectedSubmitter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [expanded, setExpanded] = useState(null);
 
-  useEffect(() => { api('approved', {}).then(res => setApprovedRemote(res.tips || [])).catch(()=>{}).finally(()=>setLoadingTips(false)); }, [tab]);
+  useEffect(() => { api('dailyTips', {}).then(res => setDailyTips(res.tips || [])).catch(()=>{}).finally(()=>setLoadingDaily(false)); }, []);
   useEffect(() => { api('logVisit', { type: session ? 'auth' : 'anon' }).catch(()=>{}); }, []);
 
-  const allTips = useMemo(() => approvedRemote, [approvedRemote]);
+  const ensureAllTipsLoaded = () => {
+    if (approvedRemote !== null || loadingAll) return; // already loaded or in progress
+    setLoadingAll(true);
+    api('approved', {}).then(res => setApprovedRemote(res.tips || [])).catch(()=>setApprovedRemote([])).finally(()=>setLoadingAll(false));
+  };
+
+  const allTips = useMemo(() => approvedRemote || [], [approvedRemote]);
 
   const submitters = useMemo(() => {
     const names = Array.from(new Set(allTips.map(t => t.submitter).filter(Boolean)));
@@ -644,32 +652,31 @@ function App() {
       {tab === 'approve' && session && session.role==='מאשר' && <ApprovalQueue session={session} />}
       {tab === 'manage' && session && session.role==='מאשר' && <ManageTips session={session} />}
 
-      {tab === 'browse' && loadingTips && <LoadingScreen />}
-      {tab === 'browse' && !loadingTips && (
+      {tab === 'browse' && loadingDaily && <LoadingScreen />}
+      {tab === 'browse' && !loadingDaily && (
         <div className="flex-1 flex flex-col">
           <div className="px-4 pt-4">
-            <input type="text" placeholder="חפשו טיפ..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
+            <input type="text" placeholder="חפשו טיפ..." value={searchQuery} onChange={e=>{setSearchQuery(e.target.value); ensureAllTipsLoaded();}}
               className="w-full bg-white text-gray-800 px-4 py-4 rounded-2xl text-base font-semibold placeholder-gray-400 focus:outline-none"
               style={{border:"2.5px solid #0284c7", boxShadow:"0 3px 0px #065a8c"}} />
           </div>
           <div className="flex-1 flex gap-3 px-4 pt-4">
             {!searchQuery && (
               <aside className="w-24 sm:w-32 shrink-0 sticky top-24 self-start flex flex-col gap-2 pb-4">
-                {submitters.length > 0 && (
-                  <div className="mb-1">
-                    <label className="text-[10px] font-bold text-blue-900 block text-center mb-1 leading-tight">סינון לפי מציע/ה:</label>
-                    <select value={selectedSubmitter} onChange={e=>setSelectedSubmitter(e.target.value)}
-                      className="w-full px-2 py-2 rounded-full text-xs font-bold border-2 border-sky-600 text-blue-900 bg-sky-50">
-                      <option value="">הכל</option>
-                      {submitters.map(name => <option key={name} value={name}>{name}</option>)}
-                    </select>
-                  </div>
-                )}
+                <div className="mb-1">
+                  <label className="text-[10px] font-bold text-blue-900 block text-center mb-1 leading-tight">סינון לפי מציע/ה:</label>
+                  <select value={selectedSubmitter} onFocus={ensureAllTipsLoaded} onClick={ensureAllTipsLoaded}
+                    onChange={e=>{setSelectedSubmitter(e.target.value); ensureAllTipsLoaded();}}
+                    className="w-full px-2 py-2 rounded-full text-xs font-bold border-2 border-sky-600 text-blue-900 bg-sky-50">
+                    <option value="">הכל</option>
+                    {submitters.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
                 {CAT_GROUPS.map(g => {
                   if (g.keys.length === 1) {
                     const key = g.keys[0];
                     return (
-                      <button key={g.label} onClick={()=>setSelectedCat(selectedCat===key?null:key)}
+                      <button key={g.label} onClick={()=>{setSelectedCat(selectedCat===key?null:key); ensureAllTipsLoaded();}}
                         className={`px-2 py-2 rounded-full text-xs font-bold btn-3d border-2 text-center ${selectedCat===key?'bg-sky-600 text-white border-sky-600':'bg-sky-50 text-blue-900 border-sky-600'}`}>
                         {g.label}
                       </button>
@@ -689,7 +696,7 @@ function App() {
                           {g.keys.map(key => {
                             const c = CATS.find(cc => cc.key === key);
                             return (
-                              <button key={key} onClick={()=>setSelectedCat(selectedCat===key?null:key)}
+                              <button key={key} onClick={()=>{setSelectedCat(selectedCat===key?null:key); ensureAllTipsLoaded();}}
                                 className={`px-2 py-1.5 rounded-full text-[11px] font-bold border text-center ${selectedCat===key?'bg-sky-600 text-white border-sky-600':'bg-white text-blue-900 border-sky-300'}`}>
                                 {c ? c.label : key}
                               </button>
@@ -703,6 +710,43 @@ function App() {
               </aside>
             )}
             <div className="flex-1 min-w-0 space-y-3 pb-8">
+            {!searchQuery && !selectedCat && !selectedSubmitter && approvedRemote === null && !loadingAll && (
+              <button onClick={ensureAllTipsLoaded}
+                className="w-full py-3 rounded-2xl font-bold text-sky-700 border-2 border-dashed border-sky-300 bg-white">
+                הצג את כל הטיפים במאגר
+              </button>
+            )}
+            {loadingAll && (
+              <div className="flex items-center justify-center gap-2 py-4 text-sky-700">
+                <div className="loader-spin w-5 h-5 rounded-full border-4 border-sky-200 border-t-sky-600"></div>
+                <span className="text-sm font-bold">טוענת את שאר הטיפים...</span>
+              </div>
+            )}
+            {!searchQuery && !selectedCat && !selectedSubmitter && dailyTips.length > 0 && (
+              <div className="space-y-3 mb-2">
+                {dailyTips.map(t => (
+                  <div key={'daily-'+t.id} className="rounded-3xl overflow-hidden shadow-md" style={{background:'#fff', border:'2px solid #f59e0b'}}>
+                    <div className="p-4 pb-2 flex items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[11px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">💡 טיפ היום</span>
+                        <span className="text-[11px] bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full font-bold mr-1">{catLabel(t.category)}</span>
+                        <p className="font-extrabold text-blue-900 mt-1.5 leading-snug">{t.name}</p>
+                      </div>
+                    </div>
+                    <div className="step-fade mx-3 mb-3 rounded-2xl p-4 space-y-2.5" style={{background:'#fff8ec'}}>
+                      {t.essence && <p className="text-sm text-gray-700 leading-relaxed"><Linkify text={t.essence} /></p>}
+                      {(t.steps||[]).length > 0 && (
+                        <ol className="list-decimal pr-5 text-sm text-gray-700 space-y-1.5">
+                          {(t.steps||[]).map((s,i)=><li key={i} className="leading-relaxed"><Linkify text={s} /></li>)}
+                        </ol>
+                      )}
+                      {t.uses && <p className="text-sm text-gray-600 leading-relaxed"><b className="text-blue-900">שימושים: </b><Linkify text={t.uses} /></p>}
+                      <p className="text-xs text-gray-400 pt-1">מציע/ה: {t.submitter}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {filtered.map(t => {
               const isOpen = expanded === t.id;
               return (
@@ -730,7 +774,7 @@ function App() {
                 </div>
               );
             })}
-            {filtered.length===0 && <p className="text-center text-gray-400 py-8">לא נמצאו טיפים מתאימים</p>}
+            {filtered.length===0 && approvedRemote !== null && !loadingAll && <p className="text-center text-gray-400 py-8">לא נמצאו טיפים מתאימים</p>}
             </div>
           </div>
         </div>
