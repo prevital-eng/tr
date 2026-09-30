@@ -676,11 +676,14 @@ function App() {
               <span className="font-extrabold text-base sm:text-xl tracking-tight">מאגר הטיפים לאזרח הוותיק</span>
             </span>
           </span>
-          {session ? (
-            <button onClick={logout} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">{session.name || session.email} ({session.role}) · יציאה</button>
-          ) : (
-            <button onClick={()=>setShowLogin(true)} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">כניסת מורשים</button>
-          )}
+          <div className="flex items-center gap-3">
+            {session ? (
+              <button onClick={logout} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">{session.name || session.email} ({session.role}) · יציאה</button>
+            ) : (
+              <button onClick={()=>setShowLogin(true)} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">כניסת מורשים</button>
+            )}
+            <img src="sponsors.png" alt="בשיתוף" className="h-12 w-auto object-contain rounded-md bg-white/90 p-1 shrink-0" />
+          </div>
         </div>
         {session && (
           <div className="flex gap-2 mt-2">
