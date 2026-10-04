@@ -47,7 +47,7 @@ const CATS = [
   { key:"health", label:"בריאות" }, { key:"photos", label:"תמונות" },
   { key:"accessibility", label:"נגישות" },
   { key:"scams", label:"הונאות ברשת" },
-  { key:"other", label:"אחר" },
+  { key:"other", label:"טריקים" },
 ];
 const PLATFORMS = [{key:"all",label:"הכל"},{key:"android",label:"אנדרואיד"},{key:"iphone",label:"אייפון"}];
 const DIFFICULTIES = [{key:"קל",label:"קל"},{key:"בינוני",label:"בינוני"},{key:"מתקדם",label:"מתקדם"}];
@@ -111,7 +111,13 @@ function LoginModal({ onClose, onLoggedIn }) {
   const handleCredential = (response) => {
     try {
       const parts = response.credential.split('.');
-      const payload = JSON.parse(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')));
+      const base64 = parts[1].replace(/-/g,'+').replace(/_/g,'/');
+      // atob מחזיר מחרוזת בת בייט-לכל-תו (Latin-1); צריך לפענח מחדש כ-UTF-8
+      // כדי ששמות בעברית (ובכל שפה שאינה אנגלית) לא יתקלקלו.
+      const jsonPayload = decodeURIComponent(
+        atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+      );
+      const payload = JSON.parse(jsonPayload);
       verifyEmail((payload.email||'').toLowerCase().trim(), payload.name);
     } catch(e) { setErr('שגיאה בקריאת פרטי המשתמש. נסי שוב.'); }
   };
