@@ -668,21 +668,21 @@ function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="text-white p-4 sticky top-0 z-20" style={{background:"linear-gradient(160deg,#0c2461 0%,#1a4d8a 50%,#0284c7 100%)"}}>
-        <div className="flex items-center justify-between mb-1">
-          <span className="flex items-center gap-2">
-            <img src="logo.png" alt="GimlaTech" className="w-12 h-12 rounded-full object-cover shrink-0" />
-            <span className="flex flex-col leading-tight">
+        <div className="flex items-center justify-between flex-wrap gap-y-2 mb-1">
+          <span className="flex items-center gap-2 min-w-0">
+            <img src="logo.png" alt="GimlaTech" className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shrink-0" />
+            <span className="flex flex-col leading-tight min-w-0">
               <span className="text-xs font-bold text-sky-200">גימלאטק</span>
-              <span className="font-extrabold text-base sm:text-xl tracking-tight">מאגר הטיפים לאזרח הוותיק</span>
+              <span className="font-extrabold text-sm sm:text-xl tracking-tight">מאגר הטיפים לאזרח הוותיק</span>
             </span>
           </span>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
             {session ? (
               <button onClick={logout} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">{session.name || session.email} ({session.role}) · יציאה</button>
             ) : (
               <button onClick={()=>setShowLogin(true)} className="text-xs bg-white/15 border-2 border-white/40 px-3 py-1.5 rounded-full btn-3d-header">כניסת מורשים</button>
             )}
-            <img src="sponsors.png" alt="בשיתוף" className="h-12 w-auto object-contain rounded-md bg-white/90 p-1 shrink-0" />
+            <img src="sponsors.png" alt="בשיתוף" className="h-9 sm:h-12 w-auto max-w-[140px] sm:max-w-none object-contain rounded-md bg-white/90 p-1 shrink-0" />
           </div>
         </div>
         {session && (
